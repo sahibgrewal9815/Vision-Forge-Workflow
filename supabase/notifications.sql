@@ -1,0 +1,8 @@
+-- Vision Forge Workflow notifications (already applied to the database).
+-- Secrets live in Supabase Vault: workflow_push_hook, workflow_vapid_private.
+-- Pieces:
+--   projects.last_editor              which phone made the change (that phone isn't notified)
+--   push_subscriptions                phones that turned on notifications (no public access)
+--   register_push / unregister_push   called by the app
+--   projects_notify trigger           on new project or notes change -> edge function workflow-push
+--   workflow_push_config()            lets the edge function (service role only) read its keys

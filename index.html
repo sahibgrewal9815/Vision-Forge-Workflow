@@ -6,9 +6,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Workflow">
+<meta name="apple-mobile-web-app-title" content="Vision Forge">
 <meta name="theme-color" content="#5a4a46">
-<title>Workflow</title>
+<title>Vision Forge</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -113,6 +113,13 @@
   .btn.ghost{background:rgba(30,24,24,.35)}
   .btn.danger{background:rgba(255,95,87,.22);color:#ffb3ae;flex:0 0 auto;padding:15px 20px}
 
+  .notify{margin:14px 0 0;display:none;align-items:center;gap:10px;width:100%;padding:13px 16px;border-radius:20px;
+    background:rgba(255,255,255,.14);font-size:14.5px;text-align:left;color:#fff}
+  .notify.show{display:flex}
+  .notify svg{flex:none}
+  .notify small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+  .bell{opacity:.8;margin-right:14px}
+  .bell.on{opacity:1}
   .toast{max-width:90vw;text-align:center;border-radius:18px !important;position:fixed;left:50%;top:calc(var(--safe-top) + 14px);transform:translate(-50%,-140%);transition:transform .3s;
     background:rgba(40,32,32,.8);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);padding:10px 18px;border-radius:999px;font-size:14px;z-index:20}
   .toast.show{transform:translate(-50%,0)}
@@ -136,11 +143,20 @@
     </div>
 
     <div class="section">
-      <h2><span>Workflow</span>
+      <h2><span>Vision Forge</span>
+        <span style="display:flex;align-items:center">
+        <button id="bellBtn" class="bell" aria-label="Notifications" style="display:none">
+          <svg id="bellIcon" viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg>
+        </button>
         <button id="refreshBtn" aria-label="Refresh" style="opacity:.8">
           <svg id="refreshIcon" viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v4.5h-4.5"/></svg>
         </button>
+        </span>
       </h2>
+      <button class="notify" id="notifyBar">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg>
+        <span><span id="notifyText">Turn on notifications</span><small id="notifySub">Get told when a project is added or notes change</small></span>
+      </button>
       <div class="divider"></div>
     </div>
     <ul class="list" id="list"></ul>
@@ -187,6 +203,10 @@
   const $ = s => document.getElementById(s);
   const STATUS_CLASS = {"To do":"todo","In process":"inprocess","Done":"done"};
   let items = [], editing = null, busy = false;
+  let DEVICE = null;
+  try{ DEVICE = localStorage.getItem("wf_device"); if(!DEVICE){ DEVICE = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())+Math.random().toString(16).slice(2)); localStorage.setItem("wf_device", DEVICE); } }catch(e){ DEVICE = "unknown"; }
+  const VAPID_PUBLIC = "BLZmH3CWhpSlSFagsQcEwbWfTSB5kGckOzKImmf9W2kYiPJgprEdbapU8nX0hAQrch0V_C7jxk8BVfUQPr_A9ZM";
+  const RPC = (CFG.SUPABASE_URL||"").replace(/\/$/,"") + "/rest/v1/rpc/";
 
   /* ---------- helpers ---------- */
   function toast(msg,ms){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),ms||2200); }
@@ -317,7 +337,8 @@
       person: $("f_person").value.trim() || null,
       client: $("f_client").value.trim() || null,
       deadline: $("f_deadline").value || null,
-      notes: $("f_notes").value.trim() || null
+      notes: $("f_notes").value.trim() || null,
+      last_editor: DEVICE
     };
     if(!data.name){ toast("Add a project name"); $("f_name").focus(); return; }
     try{
@@ -339,6 +360,67 @@
   };
 
   $("refreshBtn").onclick = () => load();
+
+  /* ---------- notifications ---------- */
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
+  const standalone = window.navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
+  const pushOK = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  let swReg = null;
+
+  function b64ToBytes(b64){ const p="=".repeat((4-b64.length%4)%4); const s=atob((b64+p).replace(/-/g,"+").replace(/_/g,"/")); return Uint8Array.from(s,c=>c.charCodeAt(0)); }
+  function bytesToB64(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
+  async function rpc(name, body){
+    const r = await fetch(RPC+name,{method:"POST",headers:HEAD,body:JSON.stringify(body)});
+    if(!r.ok) throw new Error(await r.text());
+  }
+  async function saveSub(sub){
+    await rpc("register_push",{p_endpoint:sub.endpoint,p_p256dh:bytesToB64(sub.getKey("p256dh")),p_auth:bytesToB64(sub.getKey("auth")),p_device:DEVICE});
+  }
+  function showNotify(text, sub, clickable){
+    $("notifyText").textContent = text; $("notifySub").textContent = sub || "";
+    $("notifyBar").classList.add("show"); $("notifyBar").style.opacity = clickable===false ? .8 : 1;
+    $("notifyBar").dataset.click = clickable===false ? "" : "1";
+  }
+  function hideNotify(){ $("notifyBar").classList.remove("show"); }
+  function setBell(on){ $("bellBtn").style.display = on===null ? "none" : ""; $("bellBtn").classList.toggle("on", !!on);
+    $("bellIcon").setAttribute("fill", on ? "#fff" : "none"); }
+
+  async function refreshNotifyUI(){
+    if(isIOS && !standalone){ setBell(null); showNotify("Want notifications?","Add this app to your Home Screen first (Share → Add to Home Screen), then open it from there.",false); return; }
+    if(!pushOK){ setBell(null); hideNotify(); return; }
+    if(Notification.permission === "denied"){ setBell(false); showNotify("Notifications are blocked","Turn them on in iPhone Settings → Notifications → Vision Forge",false); return; }
+    const sub = swReg && await swReg.pushManager.getSubscription();
+    if(sub && Notification.permission === "granted"){ setBell(true); hideNotify(); try{ await saveSub(sub); }catch(e){} }
+    else { setBell(false); showNotify("Turn on notifications","Get told when a project is added or notes change"); }
+  }
+
+  async function enableNotifications(){
+    try{
+      const perm = await Notification.requestPermission();
+      if(perm !== "granted"){ await refreshNotifyUI(); return; }
+      swReg = swReg || await navigator.serviceWorker.ready;
+      let sub = await swReg.pushManager.getSubscription();
+      if(!sub) sub = await swReg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:b64ToBytes(VAPID_PUBLIC)});
+      await saveSub(sub);
+      toast("Notifications on"); refreshNotifyUI();
+    }catch(err){ toast("Couldn't turn on notifications: " + (err.message||err), 8000); console.error(err); }
+  }
+  async function disableNotifications(){
+    if(!confirm("Turn off notifications on this phone?")) return;
+    try{
+      const sub = swReg && await swReg.pushManager.getSubscription();
+      if(sub){ await rpc("unregister_push",{p_endpoint:sub.endpoint}); await sub.unsubscribe(); }
+      toast("Notifications off");
+    }catch(err){ toast("Couldn't turn off: " + err.message, 6000); }
+    refreshNotifyUI();
+  }
+  $("notifyBar").onclick = () => { if($("notifyBar").dataset.click) enableNotifications(); };
+  $("bellBtn").onclick = () => { $("bellBtn").classList.contains("on") ? disableNotifications() : enableNotifications(); };
+
+  if("serviceWorker" in navigator){
+    navigator.serviceWorker.register("sw.js").then(r=>{ swReg=r; refreshNotifyUI(); }).catch(err=>{ console.error(err); refreshNotifyUI(); });
+    navigator.serviceWorker.addEventListener("message", e=>{ if(e.data==="refresh") load(true); });
+  } else refreshNotifyUI();
 
   /* ---------- start ---------- */
   $("today").textContent = new Date().toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});
