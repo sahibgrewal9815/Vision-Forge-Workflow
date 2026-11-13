@@ -113,7 +113,7 @@
   .btn.ghost{background:rgba(30,24,24,.35)}
   .btn.danger{background:rgba(255,95,87,.22);color:#ffb3ae;flex:0 0 auto;padding:15px 20px}
 
-  .toast{position:fixed;left:50%;top:calc(var(--safe-top) + 14px);transform:translate(-50%,-140%);transition:transform .3s;
+  .toast{max-width:90vw;text-align:center;border-radius:18px !important;position:fixed;left:50%;top:calc(var(--safe-top) + 14px);transform:translate(-50%,-140%);transition:transform .3s;
     background:rgba(40,32,32,.8);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);padding:10px 18px;border-radius:999px;font-size:14px;z-index:20}
   .toast.show{transform:translate(-50%,0)}
   .spin{animation:spin 1s linear infinite} @keyframes spin{to{transform:rotate(360deg)}}
@@ -189,11 +189,15 @@
   let items = [], editing = null, busy = false;
 
   /* ---------- helpers ---------- */
-  function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),2200); }
+  function toast(msg,ms){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),ms||2200); }
   function esc(s){ return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
   async function api(path, opts={}){
     const r = await fetch(API + path, {...opts, headers:{...HEAD, ...(opts.headers||{})}});
-    if(!r.ok){ throw new Error((await r.text()) || r.statusText); }
+    if(!r.ok){
+      let msg = r.status + " " + r.statusText;
+      try{ const j = await r.json(); msg = j.message || j.msg || j.error || msg; if(j.code) msg += " (" + j.code + ")"; }catch(e){}
+      throw new Error(msg);
+    }
     return r.status===204 ? null : r.json();
   }
   function fmtDate(d){ if(!d) return ""; const x=new Date(d+"T00:00:00"); return x.toLocaleDateString(undefined,{day:"numeric",month:"short"}); }
@@ -265,7 +269,7 @@
     try{
       items = await api("?select=*&order=position.asc,created_at.asc");
       render();
-    }catch(err){ if(!silent) toast("Couldn't load. Check internet."); console.error(err); }
+    }catch(err){ if(!silent) toast("Couldn't load: " + err.message, 8000); console.error(err); }
     finally{ $("refreshIcon").classList.remove("spin"); }
   }
 
@@ -324,7 +328,7 @@
         await api("",{method:"POST",body:JSON.stringify(data),headers:{Prefer:"return=minimal"}});
       }
       closeSheet(); toast("Saved"); load();
-    }catch(err){ toast("Couldn't save"); console.error(err); }
+    }catch(err){ toast("Couldn't save: " + err.message, 8000); console.error(err); }
   };
 
   $("delBtn").onclick = async () => {
