@@ -4,7 +4,7 @@ Track projects, their status and who's working on them.
 
 - **iPhone app**: open the link, then tap Share → **Add to Home Screen**
 - **Rainmeter widget**: shows the top 3 projects on your Windows desktop
-- **Data**: saved in Supabase (PACE Punjab project), so the app and widget always match
+- **Data**: saved in Supabase, so the app and widget always match
 
 **App link:** https://sahibgrewal9815.github.io/Vision-Forge-Workflow/
 
