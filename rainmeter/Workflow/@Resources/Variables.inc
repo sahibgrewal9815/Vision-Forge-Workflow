@@ -9,6 +9,9 @@ AppURL=https://sahibgrewal9815.github.io/Vision-Forge-Workflow/
 ; ---- Photo at the top (right-click the widget > Change photo) ----
 Photo=#@#photo.jpg
 
+; ---- Widget size: 1 = 100%, 0.8 = 80% (right-click > Size) ----
+Scale=0.8
+
 ; ---- Blur behind the card: 1 = on, 0 = off (needs the FrostedGlass plugin) ----
 Blur=0
 BlurType=Acrylic
