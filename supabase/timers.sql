@@ -1,0 +1,5 @@
+-- Vision Forge Workflow timers (already applied).
+-- projects.time_minutes, projects.timer_started_at
+-- projects_timer_rules trigger: clears timer when time changes or project marked Done
+-- start_timer(p_id) RPC: used by the widget's Start button (server clock)
+-- widget_projects view: what the desktop widget reads (secs_left worked out on the server)

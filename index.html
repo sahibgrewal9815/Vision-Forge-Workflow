@@ -73,6 +73,14 @@
   .arrows button{width:34px;height:30px;border-radius:12px;background:var(--pill);display:grid;place-items:center}
   .arrows button:disabled{opacity:.25}
   .arrows svg{width:14px;height:14px}
+  .timer{margin-top:10px;display:flex;align-items:center;gap:10px}
+  .timer .track{flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.16);overflow:hidden}
+  .timer .fill{height:100%;border-radius:3px;background:var(--green);transition:width .8s linear,background .4s}
+  .timer .left{font-size:12.5px;color:var(--muted);white-space:nowrap;min-width:78px;text-align:right}
+  .timer.over .left{color:#ffb3ae}
+  .time-row{display:flex;gap:10px;align-items:center}
+  .time-row input{flex:1;text-align:center}
+  .time-row span{color:var(--muted);font-size:15px}
   .rank{width:22px;font-size:13px;color:var(--muted);text-align:center;flex:none}
   .desk-sep{display:flex;align-items:center;gap:10px;margin:6px 14px;font-size:11.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
   .desk-sep::before,.desk-sep::after{content:"";flex:1;height:1px;background:var(--line)}
@@ -182,6 +190,9 @@
         <button data-v="Done"><span class="dot done"></span>Done</button>
       </div></div>
     <div class="field"><label>Who's working on it</label><input id="f_person" placeholder="Name" autocomplete="off"></div>
+    <div class="field"><label>Time to finish</label>
+      <div class="time-row"><input id="f_hours" type="number" inputmode="numeric" min="0" max="999" placeholder="0"><span>h</span>
+      <input id="f_mins" type="number" inputmode="numeric" min="0" max="59" placeholder="0"><span>min</span></div></div>
     <div class="field"><label>Client name</label><input id="f_client" placeholder="Client" autocomplete="off"></div>
     <div class="field"><label>Deadline</label><input id="f_deadline" type="date"></div>
     <div class="field"><label>Notes</label><textarea id="f_notes" placeholder="Anything to remember"></textarea></div>
@@ -219,6 +230,31 @@
       throw new Error(msg);
     }
     return r.status===204 ? null : r.json();
+  }
+  function fmtDur(sec){
+    sec = Math.max(0, Math.round(sec)); const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60);
+    if(h && m) return `${h}h ${m}m`; if(h) return `${h}h`; if(m) return `${m}m`; return "<1m";
+  }
+  function timerState(p){
+    if(!p.time_minutes || !p.timer_started_at || p.status==="Done") return null;
+    const total = p.time_minutes*60;
+    const left = total - (Date.now() - new Date(p.timer_started_at).getTime())/1000;
+    const frac = Math.max(0, Math.min(1, left/total));
+    const color = left<=0 ? "var(--red)" : frac>0.5 ? "var(--green)" : frac>0.2 ? "var(--yellow)" : "var(--red)";
+    const text = left<=0 ? `+${fmtDur(-left)} over` : `${fmtDur(left)} left`;
+    return {used: left<=0 ? 100 : (1-frac)*100, color, text, over: left<=0};
+  }
+  function timerHTML(p,i){
+    const t = timerState(p); if(!t) return "";
+    return `<div class="timer${t.over?" over":""}" data-t="${i}"><div class="track"><div class="fill" style="width:${t.used}%;background:${t.color}"></div></div><span class="left">${t.text}</span></div>`;
+  }
+  function tickTimers(){
+    document.querySelectorAll(".timer[data-t]").forEach(el=>{
+      const p = items[+el.dataset.t]; const t = p && timerState(p); if(!t) return;
+      el.classList.toggle("over", t.over);
+      const f = el.querySelector(".fill"); f.style.width = t.used + "%"; f.style.background = t.color;
+      el.querySelector(".left").textContent = t.text;
+    });
   }
   function fmtDate(d){ if(!d) return ""; const x=new Date(d+"T00:00:00"); return x.toLocaleDateString(undefined,{day:"numeric",month:"short"}); }
 
@@ -262,7 +298,9 @@
             <span class="tag"><span class="dot ${STATUS_CLASS[p.status]||"todo"}"></span>${esc(p.status||"To do")}</span>
             ${p.person?`<span class="person"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>${esc(p.person)}</span>`:""}
             ${p.deadline?`<span class="person">· ${fmtDate(p.deadline)}</span>`:""}
+            ${p.time_minutes && !timerState(p) && p.status!=="Done"?`<span class="tag"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9.5 2.5h5"/></svg>${fmtDur(p.time_minutes*60)}</span>`:""}
           </div>
+          ${timerHTML(p,i)}
         </div>
         <div class="arrows">
           <button data-move="-1" ${i===0?"disabled":""} aria-label="Move up"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg></button>
@@ -320,6 +358,8 @@
     $("f_client").value = p?.client || "";
     $("f_deadline").value = p?.deadline || "";
     $("f_notes").value = p?.notes || "";
+    const tm = p?.time_minutes || 0;
+    $("f_hours").value = tm ? Math.floor(tm/60) : ""; $("f_mins").value = tm ? tm%60 : "";
     setSeg("f_type", p?.type || "New");
     setSeg("f_status", p?.status || "To do");
     $("delBtn").style.display = p ? "" : "none";
@@ -340,6 +380,9 @@
       notes: $("f_notes").value.trim() || null,
       last_editor: DEVICE
     };
+    const hrs = Math.max(0, parseInt($("f_hours").value,10) || 0), mins = Math.max(0, Math.min(59, parseInt($("f_mins").value,10) || 0));
+    const tmin = hrs*60 + mins;
+    if(tmin > 0 || items.some(p=>"time_minutes" in p)) data.time_minutes = tmin > 0 ? tmin : null;
     if(!data.name){ toast("Add a project name"); $("f_name").focus(); return; }
     try{
       if(editing){
@@ -427,6 +470,7 @@
   applyPhoto();
   load();
   setInterval(()=>{ if(!document.hidden && !$("sheet").classList.contains("open")) load(true); }, 20000);
+  setInterval(()=>{ if(!document.hidden) tickTimers(); }, 1000);
   document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) load(true); });
 })();
 </script>

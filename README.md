@@ -19,6 +19,8 @@ Track projects, their status and who's working on them.
 | Change status | 🔴 To do · 🟡 In process · 🟢 Done |
 | Change order | Up / down arrows. The **top 3 show on the desktop widget** |
 | Change background photo | Tap the camera button on the photo (saved on that phone only) |
+| Set a time | Edit a project → **Time to finish** (hours + minutes) |
+| Notifications | Tap **Turn on notifications** (home-screen app only). You get a notification when a project is added or notes change |
 
 No login: anyone with the link can view and edit, so share it only with your team.
 
@@ -33,7 +35,10 @@ No login: anyone with the link can view and edit, so share it only with your tea
 Right-click the widget for:
 - **Change photo**: choose any picture from your PC
 - **Refresh now**
-- **Open Workflow app**
+- **Open Vision Forge app**
+- **Size**: 100% to 60%
+
+**Timers:** projects with a time set show **▶ Start**. Press it and a line fills up: green, then yellow, then red. When time is up, the line turns red, shows how far over it is, and Windows shows a pop-up once. Changing the time in the app or marking the project Done clears the timer.
 
 The widget checks for changes every 30 seconds.
 
