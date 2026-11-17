@@ -4,7 +4,7 @@ local NOT_STARTED = -999999000
 
 function Initialize()
   fetchAt = os.time()
-  res = SKIN:GetVariable('@')
+  res = SKIN:ReplaceVariables('#@#')
   notifiedPath = res .. 'notified.txt'
   notified = {}
   local f = io.open(notifiedPath, 'r')
@@ -59,14 +59,36 @@ local function popup(title, body)
   SKIN:Bang('!CommandMeasure', 'MeasureNotify', 'Run')
 end
 
+-- timer area: 0 nothing, 1 Start button, 2 running line, 3 "no time set"
 local function setMode(i, m)
   if mode[i] == m then return end
   mode[i] = m
   SKIN:Bang(m == 1 and '!ShowMeterGroup' or '!HideMeterGroup', 'TimerStart' .. i)
   SKIN:Bang(m == 2 and '!ShowMeterGroup' or '!HideMeterGroup', 'TimerBar' .. i)
+  SKIN:Bang(m == 3 and '!ShowMeterGroup' or '!HideMeterGroup', 'TimerNone' .. i)
 end
 
+local DOT = { ['To do'] = '255,95,87', ['In process'] = '255,197,61', ['Done'] = '52,199,89' }
+
+local function clean(v)
+  v = tostring(v or '')
+  if v == 'null' then return '' end
+  v = v:gsub('^"', ''):gsub('"$', '')
+  v = v:gsub('\\"', '"')
+  return v
+end
+
+local lastErr = ''
 function Update()
+  local ok, err = pcall(Tick)
+  if not ok and tostring(err) ~= lastErr then
+    lastErr = tostring(err)
+    print('Vision Forge timers error: ' .. lastErr)
+  end
+  return ''
+end
+
+function Tick()
   local now = os.time()
   local due = {}
   for i = 1, 3 do
@@ -77,9 +99,16 @@ function Update()
     local secs   = tonumber(val(p .. 'Secs')) or NOT_STARTED - 1
     local key    = val(p .. 'Key')
     local id     = val(p .. 'Id')
+    local person = clean(val(p .. 'Person'))
 
-    if name == '' or mins <= 0 or status == 'Done' then
+    SKIN:Bang('!SetVariable', 'R' .. i .. 'Person', person)
+    SKIN:Bang('!SetVariable', 'R' .. i .. 'Dot', DOT[status] or '255,255,255')
+    SKIN:Bang(person == '' and '!HideMeter' or '!ShowMeter', 'MeterR' .. i .. 'PersonIcon')
+
+    if name == '' or status == 'Done' then
       setMode(i, 0)
+    elseif mins <= 0 then
+      setMode(i, 3)
     elseif secs <= NOT_STARTED then
       SKIN:Bang('!SetVariable', 'T' .. i .. 'Start', starting[i] and 'Starting...' or ('Start  (' .. fmt(mins * 60) .. ')'))
       setMode(i, 1)
@@ -94,7 +123,7 @@ function Update()
         color = (frac > 0.5 and '52,199,89') or (frac > 0.2 and '255,197,61') or '255,95,87'
         text = fmt(left) .. ' left'; tcolor = '255,255,255,175'
       end
-      SKIN:Bang('!SetVariable', 'T' .. i .. 'Used', left <= 0 and 1 or (1 - frac))
+      SKIN:Bang('!SetVariable', 'T' .. i .. 'Used', string.format('%.4f', left <= 0 and 1 or (1 - frac)))
       SKIN:Bang('!SetVariable', 'T' .. i .. 'Color', color)
       SKIN:Bang('!SetVariable', 'T' .. i .. 'Text', text)
       SKIN:Bang('!SetVariable', 'T' .. i .. 'TextColor', tcolor)
@@ -119,8 +148,8 @@ function Update()
 
   SKIN:Bang('!UpdateMeterGroup', 'TimerStart1'); SKIN:Bang('!UpdateMeterGroup', 'TimerStart2'); SKIN:Bang('!UpdateMeterGroup', 'TimerStart3')
   SKIN:Bang('!UpdateMeterGroup', 'TimerBar1'); SKIN:Bang('!UpdateMeterGroup', 'TimerBar2'); SKIN:Bang('!UpdateMeterGroup', 'TimerBar3')
+  SKIN:Bang('!UpdateMeterGroup', 'Row1'); SKIN:Bang('!UpdateMeterGroup', 'Row2'); SKIN:Bang('!UpdateMeterGroup', 'Row3')
   SKIN:Bang('!Redraw')
-  return ''
 end
 
 -- Start button
